@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # GOPIKA
 
 Offline Multilingual Voice Intelligence Stack
@@ -43,3 +44,7 @@ Browser UI
 ## Status
 
 Phase 1 — Voice Core (In Development)
+=======
+# Gopika-AI
+AI AGENT that helps in Farm Operations
+>>>>>>> 4e363a6ddcd66130cc1e3ef47c479a500bb22bc9
