@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+
+  backend:
+    build:
+      context: ../backend
+    container_name: gopika-backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      - llm
+    environment:
+      - LLM_HOST=http://llm:11434
+    restart: unless-stopped
+
+  llm:
+    image: ollama/ollama
+    container_name: gopika-llm
+    runtime: nvidia
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  ollama_models:
