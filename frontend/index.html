@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>GOPIKA - Farmer AI</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="container">
+  <h1>🌾 GOPIKA</h1>
+  <p class="subtitle">AI Assistant for Farmers</p>
+
+  <div id="chat"></div>
+
+  <div class="input-row">
+    <textarea id="prompt" placeholder="Ask about crops, soil, weather..."></textarea>
+    <button onclick="sendPrompt()">Send</button>
+    <button onclick="startRecording()">🎙 Speak</button>
+    <button onclick="stopRecording()">⏹ Stop</button>
+  </div>
+</div>
+
+
+<script>
+
+let currentAudio = null;
+let controller = null;
+let mediaRecorder;
+let audioChunks = [];
+let recognition;
+let liveTranscript = "";
+
+/* -----------------------------
+   LIVE BROWSER TRANSCRIPTION
+------------------------------*/
+if ("webkitSpeechRecognition" in window) {
+  recognition = new webkitSpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  recognition.onresult = function (event) {
+    liveTranscript = "";
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      liveTranscript += event.results[i][0].transcript;
+    }
+    document.getElementById("prompt").value = liveTranscript;
+  };
+}
+
+/* -----------------------------
+   TEXT CHAT (STREAMING)
+------------------------------*/
+async function sendPrompt() {
+
+  const promptBox = document.getElementById("prompt");
+  const chat = document.getElementById("chat");
+  const prompt = promptBox.value.trim();
+  if (!prompt) return;
+
+  promptBox.value = "";
+
+  // Abort previous text stream if running
+  if (controller) {
+    controller.abort();
+    controller = null;
+  }
+
+  controller = new AbortController();
+
+  const userMsg = document.createElement("div");
+  userMsg.className = "message user";
+  userMsg.innerText = prompt;
+  chat.appendChild(userMsg);
+
+  const aiMsg = document.createElement("div");
+  aiMsg.className = "message ai";
+  chat.appendChild(aiMsg);
+
+  chat.scrollTop = chat.scrollHeight;
+
+  const response = await fetch("http://127.0.0.1:8000/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+    signal: controller.signal
+  });
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    aiMsg.innerText += decoder.decode(value);
+    chat.scrollTop = chat.scrollHeight;
+  }
+}
+
+/* -----------------------------
+   START RECORDING (INTERRUPT)
+------------------------------*/
+async function startRecording() {
+
+  // Cancel LLM stream immediately
+  if (controller) {
+    controller.abort();
+    controller = null;
+  }
+
+  // Stop AI voice instantly
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.currentTime = 0;
+    currentAudio = null;
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  mediaRecorder = new MediaRecorder(stream);
+
+  audioChunks = [];
+  mediaRecorder.start();
+
+  if (recognition) recognition.start();
+
+  mediaRecorder.ondataavailable = event => {
+    audioChunks.push(event.data);
+  };
+}
+
+/* -----------------------------
+   STOP RECORDING
+------------------------------*/
+async function stopRecording() {
+
+  if (!mediaRecorder) return;
+
+  mediaRecorder.stop();
+  if (recognition) recognition.stop();
+
+  mediaRecorder.onstop = async () => {
+
+    const blob = new Blob(audioChunks, { type: "audio/wav" });
+    const formData = new FormData();
+    formData.append("file", blob, "voice.wav");
+
+    const response = await fetch("http://127.0.0.1:8000/voice-chat", {
+      method: "POST",
+      body: formData
+    });
+
+    const data = await response.json();
+
+    const chat = document.getElementById("chat");
+
+    const userMsg = document.createElement("div");
+    userMsg.className = "message user";
+    userMsg.innerText = data.transcription;
+    chat.appendChild(userMsg);
+
+    const aiMsg = document.createElement("div");
+    aiMsg.className = "message ai";
+    aiMsg.innerText = data.response_text;
+    chat.appendChild(aiMsg);
+
+    chat.scrollTop = chat.scrollHeight;
+
+    // Stop previous audio just in case
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+    }
+
+    currentAudio = new Audio("http://127.0.0.1:8000/" + data.response_audio);
+    currentAudio.play();
+  };
+}
+
+</script>
+
+</body>
+</html>
